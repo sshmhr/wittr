@@ -1,4 +1,4 @@
-var staticCacheName = 'wittr-static-v7';
+var staticCacheName = 'wittr-static-v8';
 var contentImgsCache = 'wittr-content-imgs';
 var allCaches = [
   staticCacheName,
@@ -47,6 +47,14 @@ self.addEventListener('fetch', function(event) {
       event.respondWith(servePhoto(event.request));
       return;
     }
+    if (requestUrl.pathname.startsWith('/avatars/')) {
+      event.respondWith(serveAvatar(event.request));
+      return;
+    }
+    if (requestUrl.pathname.startsWith('/imgs/test-memes/')) {
+      event.respondWith(serveTestGif(event.request));
+      return;
+    }
   }
 
   event.respondWith(
@@ -56,20 +64,47 @@ self.addEventListener('fetch', function(event) {
   );
 });
 
+function serveAvatar(request) {
+  var storageUrl = request.url.replace(/-\dx\.jpg$/, '');
+
+  return caches.open(contentImgsCache).then(function(cache) {
+    return cache.match(storageUrl).then(function(response) {
+      var networkFetch = fetch(request).then(function(networkResponse) {
+        cache.put(storageUrl, networkResponse.clone());
+        return networkResponse;
+      });
+
+      return response || networkFetch;
+    });
+  });
+}
+
 function servePhoto(request) {
-  // Photo urls look like:
-  // /photos/9-8028-7527734776-e1d2bda28e-800px.jpg
-  // But storageUrl has the -800px.jpg bit missing.
-  // Use this url to store & match the image in the cache.
-  // This means you only store one copy of each photo.
   var storageUrl = request.url.replace(/-\d+px\.jpg$/, '');
 
-  // TODO: return images from the "wittr-content-imgs" cache
-  // if they're in there. Otherwise, fetch the images from
-  // the network, put them into the cache, and send it back
-  // to the browser.
-  //
-  // HINT: cache.put supports a plain url as the first parameter
+  return caches.open(contentImgsCache).then(function(cache) {
+    return cache.match(storageUrl).then(function(response) {
+      if (response) return response;
+
+      return fetch(request).then(function(networkResponse) {
+        cache.put(storageUrl, networkResponse.clone());
+        return networkResponse;
+      });
+    });
+  });
+}
+
+function serveTestGif(request) {
+  return fetch(request).then(response => {
+    if (!response.headers.get('Content-Type').startsWith('image/gif')) {
+      // Not a gif, so just return the response
+      return response;
+    }
+
+    return response.blob().then(function(blob) {
+      return new Response(blob.slice(1));
+    });
+  });
 }
 
 self.addEventListener('message', function(event) {
